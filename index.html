@@ -308,6 +308,8 @@ $("impf").onchange=async e=>{try{const j=JSON.parse(await e.target.files[0].text
 try{const s=JSON.parse(localStorage.getItem("uni-state2")||"{}");customTracks=s.customTracks||[];playlists=s.playlists||[];queue=(s.queue||[]).filter(i=>customTracks[i])}catch{}
 renderRows();renderQueue();renderNow();renderQuick();renderPlaylists();
 // ---- download ----
+// Sites the Download button sends you to. {url} is replaced with the encoded track link.
+const DL_SITES={yt:"https://cnvmp3.com/",sc:"https://cobalt.tools/?u={url}"};
 const DL_ICON='<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></svg>';
 const safe=x=>String(x||"").replace(/[\\\/:*?"<>|]+/g,"").replace(/\s+/g," ").trim().slice(0,120);
 function saveBlob(b,name){const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),60000)}
@@ -317,13 +319,10 @@ async function download(i){
  const base=safe(tr.artist&&!generic?tr.artist+" - "+tr.title:tr.title)||"track";
  try{
   if(tr.source==="Local"){const f=await dbGet(tr.ref);if(!f)throw 0;const nm=tr.ref.replace(/^local:/,"").replace(/:\d+:\d+$/,"");saveBlob(f,nm||base+".mp3");toast(lg("Saved: ","Сохранено: ")+(nm||base));return}
-  if(isSC(tr)){window.open(tr.ref,"_blank","noopener");toast(lg("SoundCloud doesn't allow direct downloads — opened the track page","SoundCloud не даёт скачать напрямую — открыта страница трека"));return}
-  toast(lg("Preparing download…","Готовлю скачивание…"));
-  const j=await pipedFast("/streams/"+tr.ref),A=(j.audioStreams||[]).filter(x=>x.url),m=A.filter(x=>/audio\/mp4/.test(x.mimeType||"")),pk=(m.length?m:A).sort((a,b)=>b.bitrate-a.bitrate)[0];
-  if(!pk)throw 0;
-  const ext=/mp4/.test(pk.mimeType||"")?".m4a":/webm/.test(pk.mimeType||"")?".webm":".audio",name=base+ext;
-  try{const r=await fetch(pk.url);if(!r.ok)throw 0;saveBlob(await r.blob(),name);toast(lg("Saved: ","Сохранено: ")+name)}
-  catch{const a=document.createElement("a");a.href=pk.url;a.download=name;a.target="_blank";a.rel="noopener";document.body.appendChild(a);a.click();a.remove();toast(lg("Server blocked direct save — stream opened in a new tab (Ctrl+S to save)","Сервер не дал сохранить напрямую — поток открыт в новой вкладке (Ctrl+S, чтобы сохранить)"))}
+  const yt=!isSC(tr),link=yt?"https://www.youtube.com/watch?v="+tr.ref:tr.ref;
+  window.open((yt?DL_SITES.yt:DL_SITES.sc).replace("{url}",encodeURIComponent(link)),"_blank","noopener");
+  try{await navigator.clipboard.writeText(link)}catch{}
+  toast(lg("Link copied — paste it on the site that just opened","Ссылка скопирована — вставь её на открывшемся сайте"));
  }catch{toast(lg("Download failed","Не удалось скачать"))}
 }
 {
@@ -336,14 +335,22 @@ async function download(i){
  like.replaceWith(w);const b=document.createElement("button");b.className="heart";b.id="nowDl";b.title="Download";b.innerHTML=DL_ICON;b.style.display="grid";b.style.placeItems="center";b.onclick=dl;w.append(b,like);
 }
 // ---- hotkeys: W = next, S = previous (by key position, so works with RU layout too) ----
-["nextBtn","bpNext"].forEach(id=>$(id).title+=" (W)");["prevBtn","bpPrev"].forEach(id=>$(id).title+=" (S)");
+["nextBtn","bpNext"].forEach(id=>$(id).title+=" (W)");["playBtn","bpPlay"].forEach(id=>$(id).title+=" (E)");["nowLike","bottomLike"].forEach(id=>$(id).title+=" (D)");["prevBtn","bpPrev"].forEach(id=>$(id).title+=" (S)");
 addEventListener("keydown",e=>{
  if(e.ctrlKey||e.metaKey||e.altKey||e.repeat)return;
  const el=e.target,tag=el&&el.tagName;
  if(tag==="TEXTAREA"||tag==="SELECT"||(el&&el.isContentEditable)||(tag==="INPUT"&&!/^(range|checkbox|button)$/.test(el.type)))return;
  if(e.code==="KeyW"){e.preventDefault();next()}
  else if(e.code==="KeyS"){e.preventDefault();prev()}
+ else if(e.code==="KeyE"){e.preventDefault();togglePlay()}
+ else if(e.code==="KeyD"){e.preventDefault();if(allTracks().length)toggleLike(current)}
 });
+// ---- hotkey hints (left sidebar) ----
+Object.assign(translations.en,{keysTitle:"Hotkeys",keyNext:"Next track",keyPrev:"Previous track",keyPlay:"Play / pause",keyLike:"Like"});
+Object.assign(translations.ru,{keysTitle:"Горячие клавиши",keyNext:"Следующий трек",keyPrev:"Предыдущий трек",keyPlay:"Пауза / play",keyLike:"Лайк"});
+document.head.insertAdjacentHTML("beforeend","<style>.keys-card{padding:13px;border:1px solid #e4e4df;border-radius:14px;background:#f8f8f6;margin-bottom:10px}.keys-card .kt{font-size:11px;font-weight:700;margin-bottom:9px}.keys-card .kr{display:flex;align-items:center;gap:10px;font-size:11px;color:#777771;padding:4px 0}.keys-card kbd{min-width:22px;height:22px;padding:0 6px;display:inline-grid;place-items:center;border:1px solid #d9d9d3;border-bottom-width:2px;border-radius:6px;background:#fff;color:#222;font:700 10px Manrope,sans-serif}</style>");
+document.querySelector(".local-card").insertAdjacentHTML("beforebegin",'<div class="keys-card"><div class="kt" data-i18n="keysTitle">Hotkeys</div><div class="kr"><kbd>W</kbd><span data-i18n="keyNext">Next track</span></div><div class="kr"><kbd>S</kbd><span data-i18n="keyPrev">Previous track</span></div><div class="kr"><kbd>E</kbd><span data-i18n="keyPlay">Play / pause</span></div><div class="kr"><kbd>D</kbd><span data-i18n="keyLike">Like</span></div></div>');
+setLang(lang);
 })();
 </script>
 </body>
