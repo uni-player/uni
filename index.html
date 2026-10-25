@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#f4f4f2">
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%20512%20512%22%3E%3Crect%20width%3D%22512%22%20height%3D%22512%22%20rx%3D%22116%22%20fill%3D%22%23191919%22/%3E%3Cpath%20d%3D%22M150%20170V290a70%2070%200%200%200%20140%200V170%22%20fill%3D%22none%22%20stroke%3D%22%23f4f4f2%22%20stroke-width%3D%2244%22%20stroke-linecap%3D%22round%22/%3E%3Ccircle%20cx%3D%22368%22%20cy%3D%22360%22%20r%3D%2226%22%20fill%3D%22%23f4f4f2%22/%3E%3C/svg%3E">
 <title>uni — music, together</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -16,7 +17,7 @@
 <body>
 <div class="app">
 <aside class="sidebar">
-  <div class="brand"><span class="brand-mark">u.</span> uni</div>
+  <div class="brand"><svg width="28" height="28" style="flex:none;margin-right:8px" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="116" fill="#191919"/><path d="M150 170V290a70 70 0 0 0 140 0V170" fill="none" stroke="#f4f4f2" stroke-width="44" stroke-linecap="round"/><circle cx="368" cy="360" r="26" fill="#f4f4f2"/></svg> uni</div>
   <div class="nav-label">Workspace</div>
   <nav class="nav" aria-label="Main navigation">
     <button class="active" data-view="home"><span class="ico">⌂</span><span data-i18n="home">Home</span></button>
@@ -161,7 +162,9 @@ function setDur(s){const tr=activeTrack();if(!s||!tr.ref)return;tr.time=s;tr.dur
 async function start(){const tr=activeTrack();if(!tr.ref)return;stopAll();
  if(tr.source==="Local"){const f=await dbGet(tr.ref);if(!f){toast("File missing");return}URL.revokeObjectURL(au.src);au.src=URL.createObjectURL(f);au.volume=vol()/100;cur="lo";au.play();return}
  if(isSC(tr)){await scInit;cur="sc";scw.load(tr.ref,{auto_play:true,callback:()=>{scw.setVolume(vol());scw.getDuration(d=>setDur(d/1000))}})}
- else{await ytInit;cur="yt";yp.loadVideoById(tr.ref);yp.setVolume(vol())}}
+ else{try{const j=await pipedFast("/streams/"+tr.ref),A=(j.audioStreams||[]).filter(x=>x.url),m=A.filter(x=>/audio\/mp4/.test(x.mimeType||"")),pk=(m.length?m:A).sort((a,b)=>b.bitrate-a.bitrate)[0];if(!pk)throw 0;
+  if(activeTrack()!==tr)return;URL.revokeObjectURL(au.src);au.src=pk.url;au.volume=vol()/100;cur="lo";au.dataset.yt=tr.ref;await au.play();return}catch{}
+  if(activeTrack()!==tr)return;await ytInit;cur="yt";au.pause();yp.loadVideoById(tr.ref);yp.setVolume(vol())}}
 window.setCurrent=i=>{const n=allTracks().length;if(!n)return;current=(i+n)%n;recent.push(current);if(recent.length>40)recent.shift();elapsed=0;playing=true;renderNow();renderRows();renderQueue();start()};
 window.togglePlay=()=>{if(!allTracks().length)return openModal("import");if(!cur)return setCurrent(current);playing=!playing;iconPlay();cur==="lo"?(playing?au.play():au.pause()):cur==="yt"?(playing?yp.playVideo():yp.pauseVideo()):(playing?scw.play():scw.pause())};
 window.next=nextTrack;
@@ -200,6 +203,7 @@ async function pipedGet(path){
  if(!pipedList){pipedList=[...PIPED];try{const l=await tfetch("https://piped-instances.kavin.rocks",3500);pipedList=[...new Set([...PIPED,...l.map(x=>x.api_url)])]}catch{}}
  for(const b of [pipedOk,...pipedList].filter((x,i,a)=>x&&a.indexOf(x)===i).slice(0,8)){try{const j=await tfetch(b+path,4000);pipedOk=b;localStorage.setItem("uni-piped",b);return j}catch{}}
  throw 0}
+async function pipedFast(path){const c=[pipedOk,...(pipedList||PIPED)].filter((x,i,a)=>x&&a.indexOf(x)===i).slice(0,4);return Promise.any(c.map(async b=>{const j=await tfetch(b+path,5000);pipedOk=b;return j}))}
 const vids=j=>(j.items||[]).filter(x=>x.url&&x.url.includes("v="));
 async function ytSearch(q){const my=++stok;ytRes={q,items:[],state:"load"};renderRows();
  try{const e=encodeURIComponent(q);let it=vids(await pipedGet("/search?q="+e+"&filter=music_songs"));if(!it.length)it=vids(await pipedGet("/search?q="+e+"&filter=videos"));
@@ -226,8 +230,8 @@ const lg=(a,b)=>lang==="ru"?b:a;
 const idb=new Promise(r=>{const q=indexedDB.open("uni",1);q.onupgradeneeded=()=>q.result.createObjectStore("f");q.onsuccess=()=>r(q.result)});
 const dbPut=async(k,v)=>{const d=await idb;return new Promise(r=>{const t=d.transaction("f","readwrite");t.objectStore("f").put(v,k);t.oncomplete=r})};
 const dbGet=async k=>{const d=await idb;return new Promise(r=>{const q=d.transaction("f").objectStore("f").get(k);q.onsuccess=()=>r(q.result)})};
-const au=new Audio();au.onended=()=>{if(cur==="lo")ended()};au.onloadedmetadata=()=>{if(cur==="lo")setDur(au.duration)};
-const stopAll=()=>{au.pause();try{yp&&yp.pauseVideo&&yp.pauseVideo()}catch{}try{scw&&scw.pause()}catch{}};
+const au=new Audio();au.onended=()=>{if(cur==="lo")ended()};au.onloadedmetadata=()=>{if(cur==="lo")setDur(au.duration)};au.onerror=async()=>{const id=au.dataset.yt;if(cur!=="lo"||!id||activeTrack().ref!==id)return;au.dataset.yt="";await ytInit;cur="yt";au.pause();yp.loadVideoById(id);yp.setVolume(vol())};
+const stopAll=()=>{au.pause();au.dataset.yt="";try{yp&&yp.pauseVideo&&yp.pauseVideo()}catch{}try{scw&&scw.pause()}catch{}};
 document.head.insertAdjacentHTML("beforeend","<style>.um button{display:block;width:100%;text-align:left;padding:8px 10px;background:none;border-radius:9px;font-size:13px}.um button:hover{background:var(--soft)}.um hr{border:0;border-top:1px solid var(--line);margin:4px 0}</style>");
 // local files
 async function addFiles(fs){let n=0;if(navigator.storage&&navigator.storage.persist)navigator.storage.persist();
