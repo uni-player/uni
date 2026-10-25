@@ -235,12 +235,12 @@ const rr0=window.renderRows;window.renderRows=()=>{if(!String(view).startsWith("
 function closeMenu(){if(menuEl)menuEl.remove();menuEl=null}
 function menu(btn){closeMenu();const i=+btn.dataset.q,r=btn.getBoundingClientRect(),ref=customTracks[i].ref;menuEl=document.createElement("div");menuEl.className="um";
  const b=(a,txt,x="")=>`<button data-act="${a}" data-i="${i}" ${x}>${txt}</button>`;
- menuEl.innerHTML=b("next",lg("Play next","Играть следующим"))+b("queue",lg("Add to queue","В очередь"))+"<hr>"+playlists.map(p=>b("pl",(p.refs.includes(ref)?"✓ ":"＋ ")+esc(p.name),`data-p="${p.id}"`)).join("")+b("newpl",lg("New playlist…","Новый плейлист…"))+(String(view).startsWith("pl:")?"<hr>"+b("rm",lg("Remove from this playlist","Убрать из этого плейлиста")):"");
+ menuEl.innerHTML=b("next",lg("Play next","Играть следующим"))+b("queue",lg("Add to queue","В очередь"))+b("dl",lg("Download","Скачать"))+"<hr>"+playlists.map(p=>b("pl",(p.refs.includes(ref)?"✓ ":"＋ ")+esc(p.name),`data-p="${p.id}"`)).join("")+b("newpl",lg("New playlist…","Новый плейлист…"))+(String(view).startsWith("pl:")?"<hr>"+b("rm",lg("Remove from this playlist","Убрать из этого плейлиста")):"");
  menuEl.style.cssText="position:fixed;z-index:60;min-width:200px;padding:6px;background:var(--paper);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);visibility:hidden";document.body.appendChild(menuEl);
  menuEl.style.left=Math.max(8,Math.min(r.left-150,innerWidth-menuEl.offsetWidth-8))+"px";menuEl.style.top=Math.max(8,Math.min(r.bottom+4,innerHeight-menuEl.offsetHeight-8))+"px";menuEl.style.visibility=""}
 document.addEventListener("click",e=>{const a=e.target.closest("[data-act]");
  if(a){e.stopPropagation();const i=+a.dataset.i,ref=customTracks[i].ref,k=a.dataset.act,p=playlists.find(x=>x.id===a.dataset.p);
-  if(k==="next")queue.unshift(i);else if(k==="queue")queue.push(i);
+  if(k==="next")queue.unshift(i);else if(k==="queue")queue.push(i);else if(k==="dl")download(i);
   else if(k==="pl"){const x=p.refs.indexOf(ref);x<0?p.refs.push(ref):p.refs.splice(x,1);renderPlaylists()}
   else if(k==="newpl"){const n=makePl();if(n)n.refs.push(ref)}
   else if(k==="rm"){const c=playlists.find(x=>"pl:"+x.id===view);if(c){c.refs=c.refs.filter(f=>f!==ref);renderPlaylists()}}
@@ -307,6 +307,43 @@ $("imp").onclick=()=>$("impf").click();
 $("impf").onchange=async e=>{try{const j=JSON.parse(await e.target.files[0].text());let n=0;(j.customTracks||[]).forEach(x=>{if(x.ref&&x.title)n+=add(x);const m=customTracks.find(y=>y.ref===x.ref);if(m&&x.liked)m.liked=true});(j.playlists||[]).forEach(p=>{if(!playlists.some(x=>x.id===p.id))playlists.push(p)});renderPlaylists();saveState();renderRows();renderQuick();toast(t("added")+n)}catch{toast(t("badLink"))}e.target.value=""};
 try{const s=JSON.parse(localStorage.getItem("uni-state2")||"{}");customTracks=s.customTracks||[];playlists=s.playlists||[];queue=(s.queue||[]).filter(i=>customTracks[i])}catch{}
 renderRows();renderQueue();renderNow();renderQuick();renderPlaylists();
+// ---- download ----
+const DL_ICON='<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></svg>';
+const safe=x=>String(x||"").replace(/[\\\/:*?"<>|]+/g,"").replace(/\s+/g," ").trim().slice(0,120);
+function saveBlob(b,name){const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),60000)}
+async function download(i){
+ const tr=customTracks[i];if(!tr){toast(lg("Nothing to download","Нечего скачивать"));return}
+ const generic=/^(Local file|Локальный файл|Added by link|YouTube)$/.test(tr.artist||"");
+ const base=safe(tr.artist&&!generic?tr.artist+" - "+tr.title:tr.title)||"track";
+ try{
+  if(tr.source==="Local"){const f=await dbGet(tr.ref);if(!f)throw 0;const nm=tr.ref.replace(/^local:/,"").replace(/:\d+:\d+$/,"");saveBlob(f,nm||base+".mp3");toast(lg("Saved: ","Сохранено: ")+(nm||base));return}
+  if(isSC(tr)){window.open(tr.ref,"_blank","noopener");toast(lg("SoundCloud doesn't allow direct downloads — opened the track page","SoundCloud не даёт скачать напрямую — открыта страница трека"));return}
+  toast(lg("Preparing download…","Готовлю скачивание…"));
+  const j=await pipedFast("/streams/"+tr.ref),A=(j.audioStreams||[]).filter(x=>x.url),m=A.filter(x=>/audio\/mp4/.test(x.mimeType||"")),pk=(m.length?m:A).sort((a,b)=>b.bitrate-a.bitrate)[0];
+  if(!pk)throw 0;
+  const ext=/mp4/.test(pk.mimeType||"")?".m4a":/webm/.test(pk.mimeType||"")?".webm":".audio",name=base+ext;
+  try{const r=await fetch(pk.url);if(!r.ok)throw 0;saveBlob(await r.blob(),name);toast(lg("Saved: ","Сохранено: ")+name)}
+  catch{const a=document.createElement("a");a.href=pk.url;a.download=name;a.target="_blank";a.rel="noopener";document.body.appendChild(a);a.click();a.remove();toast(lg("Server blocked direct save — stream opened in a new tab (Ctrl+S to save)","Сервер не дал сохранить напрямую — поток открыт в новой вкладке (Ctrl+S, чтобы сохранить)"))}
+ }catch{toast(lg("Download failed","Не удалось скачать"))}
+}
+{
+ const dl=()=>download(current);
+ // bottom bar
+ $("queueJump").insertAdjacentHTML("beforebegin",'<button id="bpDl" title="Download">'+DL_ICON+'</button>');
+ $("bpDl").onclick=dl;
+ // now-playing card
+ const like=$("nowLike"),w=document.createElement("span");w.style.cssText="display:flex;align-items:center;gap:2px";
+ like.replaceWith(w);const b=document.createElement("button");b.className="heart";b.id="nowDl";b.title="Download";b.innerHTML=DL_ICON;b.style.display="grid";b.style.placeItems="center";b.onclick=dl;w.append(b,like);
+}
+// ---- hotkeys: W = next, S = previous (by key position, so works with RU layout too) ----
+["nextBtn","bpNext"].forEach(id=>$(id).title+=" (W)");["prevBtn","bpPrev"].forEach(id=>$(id).title+=" (S)");
+addEventListener("keydown",e=>{
+ if(e.ctrlKey||e.metaKey||e.altKey||e.repeat)return;
+ const el=e.target,tag=el&&el.tagName;
+ if(tag==="TEXTAREA"||tag==="SELECT"||(el&&el.isContentEditable)||(tag==="INPUT"&&!/^(range|checkbox|button)$/.test(el.type)))return;
+ if(e.code==="KeyW"){e.preventDefault();next()}
+ else if(e.code==="KeyS"){e.preventDefault();prev()}
+});
 })();
 </script>
 </body>
