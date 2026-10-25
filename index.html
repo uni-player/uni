@@ -294,6 +294,13 @@ au.addEventListener("play",()=>{if(eqOn()||ac)eqApply()});
 $("eqToggle").onclick=$("bpEq").onclick=()=>{$("eqPanel").classList.toggle("show");$("eqPanel").scrollIntoView({behavior:"smooth",block:"nearest"})};
 try{const e=JSON.parse(localStorage.getItem("uni-eq")||"{}");if(e.g)document.querySelectorAll("[data-band]").forEach((s,i)=>s.value=e.g[i]||0);if(e.b)$("bassPreset").value=e.b;if(e.p)$("eqPreset").value=e.p}catch{}
 setLang(lang);
+// adblock hint
+translations.en.abText="For YouTube without ads, use an ad blocker: uBlock Origin (Firefox) or the Brave browser.";translations.ru.abText="Чтобы YouTube играл без рекламы, нужен блокировщик: uBlock Origin (Firefox) или браузер Brave.";
+if(!localStorage.getItem("uni-ab")){const bait=document.createElement("div");bait.className="adsbox pub_300x250 text-ad textAd banner_ad";bait.style.cssText="position:absolute;left:-999px;width:10px;height:10px";bait.innerHTML="&nbsp;";document.body.appendChild(bait);
+ setTimeout(()=>{const blocked=!bait.offsetHeight||getComputedStyle(bait).display==="none";bait.remove();if(blocked)return;
+  const b=document.createElement("div");b.style.cssText="position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:70;max-width:min(520px,calc(100vw - 24px));display:flex;gap:12px;align-items:center;padding:12px 14px;background:var(--paper);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);font-size:13px";
+  b.innerHTML=`<span data-i18n="abText">${t("abText")}</span><a href="https://ublockorigin.com" target="_blank" rel="noopener" style="color:inherit;font-weight:600">uBlock</a><a href="https://brave.com" target="_blank" rel="noopener" style="color:inherit;font-weight:600">Brave</a><button class="tiny-btn" aria-label="Close">×</button>`;
+  b.querySelector("button").onclick=()=>{localStorage.setItem("uni-ab","1");b.remove()};document.body.appendChild(b)},500)}
 // export / import
 $("exp").onclick=()=>{const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify({customTracks:customTracks.filter(x=>x.source!=="Local"),playlists})],{type:"application/json"}));a.download="uni-library.json";a.click()};
 $("imp").onclick=()=>$("impf").click();
